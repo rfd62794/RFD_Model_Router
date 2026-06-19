@@ -1,0 +1,19 @@
+code_transformation:
+  provider: groq
+  model: llama-3.1-70b-versatile
+
+code_construction:
+  provider: anthropic
+  model: claude-haiku-4-5-20251001
+
+content:
+  provider: gemini
+  model: gemini-2.0-flash-exp
+
+directive:
+  provider: anthropic
+  model: claude-sonnet-4-6
+
+default:
+  provider: anthropic
+  model: claude-haiku-4-5-20251001

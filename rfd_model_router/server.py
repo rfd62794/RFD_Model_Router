@@ -1,10 +1,14 @@
+import os
 import time
 
+from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from uvicorn import run
 
 from .logger import init_db, log_request
 from .router import route
+
+load_dotenv()
 
 mcp = FastMCP("rfd-model-router", sse_path="/mcp", message_path="/messages/")
 

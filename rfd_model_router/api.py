@@ -1,12 +1,16 @@
+import os
 import time
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from starlette.responses import JSONResponse
 
 from .logger import init_db, log_request
 from .router import route
+
+load_dotenv()
 
 
 class RouteRequest(BaseModel):

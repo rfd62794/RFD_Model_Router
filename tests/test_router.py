@@ -18,7 +18,7 @@ def test_known_task_type_routes_correctly():
     with patch("rfd_model_router.router.get_adapter", return_value=adapter):
         result = router.route("code_transformation", [{"role": "user", "content": "hi"}])
         assert result[1] == "groq"
-        assert result[2] == "llama-3.1-70b-versatile"
+        assert result[2] == "llama-3.3-70b-versatile"
 
 
 def test_unknown_task_type_falls_back():

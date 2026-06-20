@@ -1,8 +1,12 @@
+import asyncio
 import sqlite3
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+import rfd_model_router.api
 from fastapi.testclient import TestClient
 
 from rfd_model_router.api import app

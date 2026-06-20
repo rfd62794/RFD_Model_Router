@@ -203,20 +203,20 @@ def test_fallback_failure_raises():
 
 def test_no_fallback_raises_immediately():
     adapter = _mock_adapter()
-    adapter.complete.side_effect = Exception("failed")
+    adapter.complete.side_effect = TimeoutError("failed")
     with patch("rfd_model_router.router.get_adapter", return_value=adapter), patch(
         "rfd_model_router.router.time.sleep"
     ):
-        with pytest.raises(Exception):
+        with pytest.raises(TimeoutError):
             router.route("directive", [{"role": "user", "content": "hi"}])
         assert adapter.complete.call_count == 3
 
 
 def test_fallback_not_retried_recursively():
     primary = _mock_adapter()
-    primary.complete.side_effect = Exception("primary failed")
+    primary.complete.side_effect = TimeoutError("primary failed")
     fallback = _mock_adapter()
-    fallback.complete.side_effect = Exception("fallback failed")
+    fallback.complete.side_effect = TimeoutError("fallback failed")
 
     def side_effect(provider):
         if provider == "groq":
@@ -228,7 +228,7 @@ def test_fallback_not_retried_recursively():
     with patch("rfd_model_router.router.get_adapter", side_effect=side_effect), patch(
         "rfd_model_router.router.time.sleep"
     ):
-        with pytest.raises(Exception):
+        with pytest.raises(TimeoutError):
             router.route("code_transformation", [{"role": "user", "content": "hi"}])
         assert primary.complete.call_count == 3
         assert fallback.complete.call_count == 3

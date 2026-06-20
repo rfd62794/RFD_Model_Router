@@ -232,3 +232,124 @@ def test_fallback_not_retried_recursively():
             router.route("code_transformation", [{"role": "user", "content": "hi"}])
         assert primary.complete.call_count == 3
         assert fallback.complete.call_count == 3
+
+
+def test_budget_under_limit_routes():
+    adapter = _mock_adapter()
+    adapter.complete.return_value = ("ok", 1, 2)
+    with patch("rfd_model_router.router.get_adapter", return_value=adapter), patch(
+        "rfd_model_router.router._get_daily_spend", return_value=0.5
+    ):
+        result = router.route("code_transformation", [{"role": "user", "content": "hi"}])
+        assert result[0] == "ok"
+
+
+def test_budget_exceeded_falls_back():
+    primary = _mock_adapter()
+    primary.complete.side_effect = Exception("primary failed")
+    fallback = _mock_adapter()
+    fallback.complete.return_value = ("fallback", 2, 3)
+
+    def side_effect(provider):
+        if provider == "groq":
+            return primary
+        if provider == "anthropic":
+            return fallback
+        raise ValueError(provider)
+
+    with patch("rfd_model_router.router.get_adapter", side_effect=side_effect), patch(
+        "rfd_model_router.router._get_daily_spend", return_value=10.0
+    ), patch("rfd_model_router.router._throttle.is_allowed", return_value=True):
+        result = router.route("code_transformation", [{"role": "user", "content": "hi"}])
+        assert result == ("fallback", "anthropic", "claude-haiku-4-5-20251001", 2, 3)
+
+
+def test_budget_exceeded_no_fallback_raises():
+    adapter = _mock_adapter()
+    adapter.complete.return_value = ("ok", 1, 2)
+    with patch("rfd_model_router.router.get_adapter", return_value=adapter), patch(
+        "rfd_model_router.router._get_daily_spend", return_value=10.0
+    ), patch("rfd_model_router.router._throttle.is_allowed", return_value=True):
+        with pytest.raises(router.BudgetExceededError):
+            router.route("directive", [{"role": "user", "content": "hi"}])
+
+
+def test_budget_zero_limit_never_blocks():
+    adapter = _mock_adapter()
+    adapter.complete.return_value = ("ok", 1, 2)
+    with patch("rfd_model_router.router.get_adapter", return_value=adapter), patch(
+        "rfd_model_router.router._get_daily_spend", return_value=100.0
+    ), patch("rfd_model_router.router._throttle.is_allowed", return_value=True):
+        result = router.route("code_transformation", [{"role": "user", "content": "hi"}])
+        assert result[0] == "ok"
+
+
+def test_oversized_request_raises():
+    adapter = _mock_adapter()
+    adapter.complete.return_value = ("ok", 1, 2)
+    with patch("rfd_model_router.router.get_adapter", return_value=adapter), patch(
+        "rfd_model_router.router._throttle.is_allowed", return_value=True
+    ):
+        large_msg = [{"role": "user", "content": "x" * 500000}]
+        with pytest.raises(ValueError):
+            router.route("code_transformation", large_msg)
+
+
+def test_undersized_request_passes():
+    adapter = _mock_adapter()
+    adapter.complete.return_value = ("ok", 1, 2)
+    with patch("rfd_model_router.router.get_adapter", return_value=adapter), patch(
+        "rfd_model_router.router._throttle.is_allowed", return_value=True
+    ):
+        result = router.route("code_transformation", [{"role": "user", "content": "hi"}])
+        assert result[0] == "ok"
+
+
+def test_throttle_falls_back_when_throttled():
+    primary = _mock_adapter()
+    primary.complete.return_value = ("ok", 1, 2)
+    fallback = _mock_adapter()
+    fallback.complete.return_value = ("fallback", 2, 3)
+
+    def side_effect(provider):
+        if provider == "groq":
+            return primary
+        if provider == "anthropic":
+            return fallback
+        raise ValueError(provider)
+
+    def throttle_side_effect(provider, rpm):
+        if provider == "groq":
+            return False
+        if provider == "anthropic":
+            return True
+        return True
+
+    with patch("rfd_model_router.router.get_adapter", side_effect=side_effect), patch(
+        "rfd_model_router.router._throttle.is_allowed", side_effect=throttle_side_effect
+    ):
+        result = router.route("code_transformation", [{"role": "user", "content": "hi"}])
+        assert result == ("fallback", "anthropic", "claude-haiku-4-5-20251001", 2, 3)
+
+
+def test_throttle_raises_no_fallback():
+    adapter = _mock_adapter()
+    adapter.complete.return_value = ("ok", 1, 2)
+    with patch("rfd_model_router.router.get_adapter", return_value=adapter), patch(
+        "rfd_model_router.router._throttle.is_allowed", return_value=False
+    ):
+        with pytest.raises(router.ThrottleError):
+            router.route("directive", [{"role": "user", "content": "hi"}])
+
+
+def test_cost_logged_in_db():
+    adapter = _mock_adapter()
+    adapter.complete.return_value = ("ok", 1000, 500)
+    with patch("rfd_model_router.router.get_adapter", return_value=adapter), patch(
+        "rfd_model_router.router._throttle.is_allowed", return_value=True
+    ), patch("rfd_model_router.router.log_request") as mock_log:
+        router.route("code_transformation", [{"role": "user", "content": "hi"}])
+        assert mock_log.called
+        call_kwargs = mock_log.call_args.kwargs
+        assert "cost_usd" in call_kwargs
+        assert call_kwargs["cost_usd"] > 0

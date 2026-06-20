@@ -94,12 +94,16 @@ def usage():
         "total_requests": 0,
         "total_input_tokens": 0,
         "total_output_tokens": 0,
+        "total_cost_usd": 0.0,
         "by_task_type": {},
         "by_provider": {},
     }
     try:
         if not DB_PATH.exists():
             return totals
+        config = load_config()
+        budgets = config.get("budgets", {})
+        today = time.strftime("%Y-%m-%d", time.gmtime())
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
@@ -107,34 +111,60 @@ def usage():
                 SELECT task_type, provider,
                     COUNT(*) AS requests,
                     COALESCE(SUM(input_tokens), 0) AS input_tokens,
-                    COALESCE(SUM(output_tokens), 0) AS output_tokens
+                    COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                    COALESCE(SUM(cost_usd), 0.0) AS cost_usd
                 FROM requests
                 GROUP BY task_type, provider
                 """
             ).fetchall()
+            # Get daily spend per provider
+            daily_spend_rows = conn.execute(
+                """
+                SELECT provider, COALESCE(SUM(cost_usd), 0.0) AS daily_spend
+                FROM requests
+                WHERE timestamp LIKE ?
+                GROUP BY provider
+                """,
+                (f"{today}%",),
+            ).fetchall()
+        daily_spend_map = {row["provider"]: row["daily_spend"] for row in daily_spend_rows}
         for row in rows:
             task_type = row["task_type"]
             provider = row["provider"]
             requests = row["requests"]
             input_tokens = row["input_tokens"]
             output_tokens = row["output_tokens"]
+            cost_usd = row["cost_usd"]
             totals["total_requests"] += requests
             totals["total_input_tokens"] += input_tokens
             totals["total_output_tokens"] += output_tokens
+            totals["total_cost_usd"] += cost_usd
             totals["by_task_type"].setdefault(
-                task_type, {"requests": 0, "input_tokens": 0, "output_tokens": 0}
+                task_type, {"requests": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}
             )
             group = totals["by_task_type"][task_type]
             group["requests"] += requests
             group["input_tokens"] += input_tokens
             group["output_tokens"] += output_tokens
+            group["cost_usd"] += cost_usd
             totals["by_provider"].setdefault(
-                provider, {"requests": 0, "input_tokens": 0, "output_tokens": 0}
+                provider,
+                {
+                    "requests": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "cost_usd": 0.0,
+                    "daily_limit_usd": 0.0,
+                    "daily_spend_usd": 0.0,
+                },
             )
             group = totals["by_provider"][provider]
             group["requests"] += requests
             group["input_tokens"] += input_tokens
             group["output_tokens"] += output_tokens
+            group["cost_usd"] += cost_usd
+            group["daily_limit_usd"] = budgets.get(provider, {}).get("daily_limit_usd", 0.0)
+            group["daily_spend_usd"] = daily_spend_map.get(provider, 0.0)
     except Exception:
         log_request("usage", "unknown", "unknown", 0, 0, 0, False)
     return totals

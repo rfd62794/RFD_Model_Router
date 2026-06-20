@@ -154,16 +154,17 @@ def test_log_rotation_deletes_old_rows():
                 model TEXT NOT NULL,
                 input_tokens INTEGER,
                 output_tokens INTEGER,
+                cost_usd REAL DEFAULT 0.0,
                 duration_ms INTEGER,
                 success INTEGER NOT NULL
             )
             """
         )
         conn.executemany(
-            "INSERT INTO requests (timestamp, task_type, provider, model, input_tokens, output_tokens, duration_ms, success) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO requests (timestamp, task_type, provider, model, input_tokens, output_tokens, cost_usd, duration_ms, success) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
-                ("2025-01-01T00:00:00Z", "code", "groq", "llama", 1, 1, 1, 1),
-                ("2026-06-19T00:00:00Z", "code", "groq", "llama", 1, 1, 1, 1),
+                ("2025-01-01T00:00:00Z", "code", "groq", "llama", 1, 1, 0.0, 1, 1),
+                ("2026-06-19T00:00:00Z", "code", "groq", "llama", 1, 1, 0.0, 1, 1),
             ],
         )
         conn.commit()
@@ -189,14 +190,15 @@ def test_log_rotation_keeps_recent_rows():
                 model TEXT NOT NULL,
                 input_tokens INTEGER,
                 output_tokens INTEGER,
+                cost_usd REAL DEFAULT 0.0,
                 duration_ms INTEGER,
                 success INTEGER NOT NULL
             )
             """
         )
         conn.execute(
-            "INSERT INTO requests (timestamp, task_type, provider, model, input_tokens, output_tokens, duration_ms, success) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            ("2026-06-19T00:00:00Z", "code", "groq", "llama", 1, 1, 1, 1),
+            "INSERT INTO requests (timestamp, task_type, provider, model, input_tokens, output_tokens, cost_usd, duration_ms, success) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("2026-06-19T00:00:00Z", "code", "groq", "llama", 1, 1, 0.0, 1, 1),
         )
         conn.commit()
     with patch("rfd_model_router.api.DB_PATH", db_path):
@@ -230,6 +232,7 @@ def test_usage_aggregates_correctly():
                 model TEXT NOT NULL,
                 input_tokens INTEGER,
                 output_tokens INTEGER,
+                cost_usd REAL DEFAULT 0.0,
                 duration_ms INTEGER,
                 success INTEGER NOT NULL
             )
@@ -238,13 +241,13 @@ def test_usage_aggregates_correctly():
         conn.executemany(
             """
             INSERT INTO requests
-            (timestamp, task_type, provider, model, input_tokens, output_tokens, duration_ms, success)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (timestamp, task_type, provider, model, input_tokens, output_tokens, cost_usd, duration_ms, success)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
-                ("2026-01-01T00:00:00Z", "code", "groq", "llama", 10, 5, 100, 1),
-                ("2026-01-01T00:00:00Z", "code", "groq", "llama", 20, 10, 200, 1),
-                ("2026-01-01T00:00:00Z", "content", "gemini", "flash", 5, 2, 50, 1),
+                ("2026-01-01T00:00:00Z", "code", "groq", "llama", 10, 5, 0.001, 100, 1),
+                ("2026-01-01T00:00:00Z", "code", "groq", "llama", 20, 10, 0.002, 200, 1),
+                ("2026-01-01T00:00:00Z", "content", "gemini", "flash", 5, 2, 0.0005, 50, 1),
             ],
         )
         conn.commit()
@@ -260,6 +263,92 @@ def test_usage_aggregates_correctly():
         assert data["by_task_type"]["code"]["requests"] == 2
         assert data["by_provider"]["groq"]["requests"] == 2
         assert data["by_provider"]["gemini"]["requests"] == 1
+    try:
+        db_path.unlink()
+    except PermissionError:
+        pass
+
+
+def test_usage_includes_cost():
+    db_path = Path(tempfile.gettempdir()) / "rfd_model_router_test_cost.db"
+    if db_path.exists():
+        db_path.unlink()
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            CREATE TABLE requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                task_type TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                model TEXT NOT NULL,
+                input_tokens INTEGER,
+                output_tokens INTEGER,
+                cost_usd REAL DEFAULT 0.0,
+                duration_ms INTEGER,
+                success INTEGER NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO requests (timestamp, task_type, provider, model, input_tokens, output_tokens, cost_usd, duration_ms, success) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("2026-06-19T00:00:00Z", "code", "groq", "llama", 10, 5, 0.001, 100, 1),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    with patch("rfd_model_router.api.DB_PATH", db_path):
+        response = client.get("/usage")
+        assert response.status_code == 200
+        data = response.json()
+        assert "total_cost_usd" in data
+        assert data["total_cost_usd"] > 0
+        assert "cost_usd" in data["by_task_type"]["code"]
+        assert "cost_usd" in data["by_provider"]["groq"]
+    try:
+        db_path.unlink()
+    except PermissionError:
+        pass
+
+
+def test_usage_includes_daily_spend():
+    db_path = Path(tempfile.gettempdir()) / "rfd_model_router_test_daily.db"
+    if db_path.exists():
+        db_path.unlink()
+    import time
+    today = time.strftime("%Y-%m-%d", time.gmtime())
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            CREATE TABLE requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                task_type TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                model TEXT NOT NULL,
+                input_tokens INTEGER,
+                output_tokens INTEGER,
+                cost_usd REAL DEFAULT 0.0,
+                duration_ms INTEGER,
+                success INTEGER NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO requests (timestamp, task_type, provider, model, input_tokens, output_tokens, cost_usd, duration_ms, success) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (f"{today}T00:00:00Z", "code", "groq", "llama", 10, 5, 0.001, 100, 1),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    with patch("rfd_model_router.api.DB_PATH", db_path):
+        response = client.get("/usage")
+        assert response.status_code == 200
+        data = response.json()
+        assert "daily_spend_usd" in data["by_provider"]["groq"]
+        assert data["by_provider"]["groq"]["daily_spend_usd"] > 0
     try:
         db_path.unlink()
     except PermissionError:

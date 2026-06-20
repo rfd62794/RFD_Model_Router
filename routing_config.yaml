@@ -1,23 +1,63 @@
 code_transformation:
   provider: groq
   model: llama-3.3-70b-versatile
+  max_context_tokens: 128000
+  pricing:
+    input_per_million: 0.59
+    output_per_million: 0.79
   fallback_provider: anthropic
   fallback_model: claude-haiku-4-5-20251001
 
 code_construction:
   provider: anthropic
   model: claude-haiku-4-5-20251001
+  max_context_tokens: 200000
+  pricing:
+    input_per_million: 0.80
+    output_per_million: 4.00
 
 content:
   provider: gemini
   model: gemini-2.0-flash-exp
+  max_context_tokens: 1000000
+  pricing:
+    input_per_million: 0.075
+    output_per_million: 0.30
   fallback_provider: anthropic
   fallback_model: claude-haiku-4-5-20251001
 
 directive:
   provider: anthropic
   model: claude-sonnet-4-6
+  max_context_tokens: 200000
+  pricing:
+    input_per_million: 3.00
+    output_per_million: 15.00
 
 default:
   provider: anthropic
   model: claude-haiku-4-5-20251001
+  max_context_tokens: 200000
+  pricing:
+    input_per_million: 0.80
+    output_per_million: 4.00
+
+rate_limits:
+  groq:
+    requests_per_minute: 30
+  anthropic:
+    requests_per_minute: 60
+  gemini:
+    requests_per_minute: 60
+  openrouter:
+    requests_per_minute: 20
+
+budgets:
+  groq:
+    daily_limit_usd: 0.00
+  anthropic:
+    daily_limit_usd: 5.00
+  gemini:
+    daily_limit_usd: 2.00
+  openrouter:
+    daily_limit_usd: 3.00

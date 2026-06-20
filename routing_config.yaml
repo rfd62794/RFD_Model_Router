@@ -1,6 +1,8 @@
 code_transformation:
   provider: groq
   model: llama-3.3-70b-versatile
+  fallback_provider: anthropic
+  fallback_model: claude-haiku-4-5-20251001
 
 code_construction:
   provider: anthropic
@@ -9,6 +11,8 @@ code_construction:
 content:
   provider: gemini
   model: gemini-2.0-flash-exp
+  fallback_provider: anthropic
+  fallback_model: claude-haiku-4-5-20251001
 
 directive:
   provider: anthropic

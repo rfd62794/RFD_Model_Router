@@ -87,7 +87,7 @@ def test_retry_on_429():
     with patch("rfd_model_router.router.get_adapter", return_value=adapter), patch(
         "rfd_model_router.router.time.sleep"
     ):
-        result = router.route("code_transformation", [{"role": "user", "content": "hi"}])
+        result = router.route("directive", [{"role": "user", "content": "hi"}])
         assert result[0] == "ok"
         assert adapter.complete.call_count == 3
 
@@ -101,7 +101,7 @@ def test_no_retry_on_400():
         "rfd_model_router.router.time.sleep"
     ) as mock_sleep:
         with pytest.raises(Exception):
-            router.route("code_transformation", [{"role": "user", "content": "hi"}])
+            router.route("directive", [{"role": "user", "content": "hi"}])
         assert adapter.complete.call_count == 1
         mock_sleep.assert_not_called()
 
@@ -115,5 +115,120 @@ def test_max_retries_exceeded_raises():
         "rfd_model_router.router.time.sleep"
     ):
         with pytest.raises(Exception):
-            router.route("code_transformation", [{"role": "user", "content": "hi"}])
+            router.route("directive", [{"role": "user", "content": "hi"}])
         assert adapter.complete.call_count == 3
+
+
+def test_timeout_triggers_retry():
+    adapter = _mock_adapter()
+    adapter.complete.side_effect = [TimeoutError("slow"), ("ok", 1, 2)]
+    with patch("rfd_model_router.router.get_adapter", return_value=adapter), patch(
+        "rfd_model_router.router.time.sleep"
+    ):
+        result = router.route("directive", [{"role": "user", "content": "hi"}])
+        assert result[0] == "ok"
+        assert adapter.complete.call_count == 2
+
+
+def test_timeout_exhausted_raises():
+    adapter = _mock_adapter()
+    adapter.complete.side_effect = TimeoutError("slow")
+    with patch("rfd_model_router.router.get_adapter", return_value=adapter), patch(
+        "rfd_model_router.router.time.sleep"
+    ):
+        with pytest.raises(TimeoutError):
+            router.route("directive", [{"role": "user", "content": "hi"}])
+        assert adapter.complete.call_count == 3
+
+
+def test_fallback_used_on_primary_failure():
+    primary = _mock_adapter()
+    primary.complete.side_effect = Exception("primary failed")
+    fallback = _mock_adapter()
+    fallback.complete.return_value = ("fallback", 2, 3)
+
+    def side_effect(provider):
+        if provider == "groq":
+            return primary
+        if provider == "anthropic":
+            return fallback
+        raise ValueError(provider)
+
+    with patch("rfd_model_router.router.get_adapter", side_effect=side_effect), patch(
+        "rfd_model_router.router.time.sleep"
+    ):
+        result = router.route("code_transformation", [{"role": "user", "content": "hi"}])
+        assert result == ("fallback", "anthropic", "claude-haiku-4-5-20251001", 2, 3)
+
+
+def test_fallback_success_returns_completion():
+    primary = _mock_adapter()
+    primary.complete.side_effect = Exception("primary failed")
+    fallback = _mock_adapter()
+    fallback.complete.return_value = ("ok", 5, 6)
+
+    def side_effect(provider):
+        if provider == "groq":
+            return primary
+        if provider == "anthropic":
+            return fallback
+        raise ValueError(provider)
+
+    with patch("rfd_model_router.router.get_adapter", side_effect=side_effect), patch(
+        "rfd_model_router.router.time.sleep"
+    ):
+        result = router.route("code_transformation", [{"role": "user", "content": "hi"}])
+        assert result[0] == "ok"
+
+
+def test_fallback_failure_raises():
+    primary = _mock_adapter()
+    primary.complete.side_effect = Exception("primary failed")
+    fallback = _mock_adapter()
+    fallback.complete.side_effect = Exception("fallback failed")
+
+    def side_effect(provider):
+        if provider == "groq":
+            return primary
+        if provider == "anthropic":
+            return fallback
+        raise ValueError(provider)
+
+    with patch("rfd_model_router.router.get_adapter", side_effect=side_effect), patch(
+        "rfd_model_router.router.time.sleep"
+    ):
+        with pytest.raises(Exception):
+            router.route("code_transformation", [{"role": "user", "content": "hi"}])
+
+
+def test_no_fallback_raises_immediately():
+    adapter = _mock_adapter()
+    adapter.complete.side_effect = Exception("failed")
+    with patch("rfd_model_router.router.get_adapter", return_value=adapter), patch(
+        "rfd_model_router.router.time.sleep"
+    ):
+        with pytest.raises(Exception):
+            router.route("directive", [{"role": "user", "content": "hi"}])
+        assert adapter.complete.call_count == 3
+
+
+def test_fallback_not_retried_recursively():
+    primary = _mock_adapter()
+    primary.complete.side_effect = Exception("primary failed")
+    fallback = _mock_adapter()
+    fallback.complete.side_effect = Exception("fallback failed")
+
+    def side_effect(provider):
+        if provider == "groq":
+            return primary
+        if provider == "anthropic":
+            return fallback
+        raise ValueError(provider)
+
+    with patch("rfd_model_router.router.get_adapter", side_effect=side_effect), patch(
+        "rfd_model_router.router.time.sleep"
+    ):
+        with pytest.raises(Exception):
+            router.route("code_transformation", [{"role": "user", "content": "hi"}])
+        assert primary.complete.call_count == 3
+        assert fallback.complete.call_count == 3

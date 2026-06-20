@@ -107,6 +107,109 @@ def test_usage_empty_db():
             assert data["by_provider"] == {}
 
 
+def test_missing_key_logs_warning():
+    with patch("rfd_model_router.api.os.getenv", return_value=None), patch(
+        "rfd_model_router.api.logging.warning"
+    ) as mock_warning, patch("rfd_model_router.api.rotate_old_logs"), patch(
+        "rfd_model_router.api.init_db"
+    ):
+        import asyncio
+        import rfd_model_router.api
+
+        async def _run():
+            async with rfd_model_router.api.lifespan(None):
+                pass
+
+        asyncio.run(_run())
+        assert mock_warning.called
+
+
+def test_all_keys_present_no_warning():
+    with patch("rfd_model_router.api.os.getenv", return_value="dummy"), patch(
+        "rfd_model_router.api.logging.warning"
+    ) as mock_warning:
+        from fastapi.testclient import TestClient
+        from rfd_model_router.api import app
+
+        TestClient(app)
+        mock_warning.assert_not_called()
+
+
+def test_log_rotation_deletes_old_rows():
+    db_path = Path(tempfile.gettempdir()) / "rfd_model_router_test_rotate.db"
+    if db_path.exists():
+        db_path.unlink()
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                task_type TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                model TEXT NOT NULL,
+                input_tokens INTEGER,
+                output_tokens INTEGER,
+                duration_ms INTEGER,
+                success INTEGER NOT NULL
+            )
+            """
+        )
+        conn.executemany(
+            "INSERT INTO requests (timestamp, task_type, provider, model, input_tokens, output_tokens, duration_ms, success) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                ("2025-01-01T00:00:00Z", "code", "groq", "llama", 1, 1, 1, 1),
+                ("2026-06-19T00:00:00Z", "code", "groq", "llama", 1, 1, 1, 1),
+            ],
+        )
+        conn.commit()
+    with patch("rfd_model_router.api.DB_PATH", db_path):
+        rfd_model_router.api.rotate_old_logs()
+    with sqlite3.connect(db_path) as conn:
+        count = conn.execute("SELECT COUNT(*) FROM requests").fetchone()[0]
+    assert count == 1
+
+
+def test_log_rotation_keeps_recent_rows():
+    db_path = Path(tempfile.gettempdir()) / "rfd_model_router_test_rotate_recent.db"
+    if db_path.exists():
+        db_path.unlink()
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                task_type TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                model TEXT NOT NULL,
+                input_tokens INTEGER,
+                output_tokens INTEGER,
+                duration_ms INTEGER,
+                success INTEGER NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO requests (timestamp, task_type, provider, model, input_tokens, output_tokens, duration_ms, success) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            ("2026-06-19T00:00:00Z", "code", "groq", "llama", 1, 1, 1, 1),
+        )
+        conn.commit()
+    with patch("rfd_model_router.api.DB_PATH", db_path):
+        rfd_model_router.api.rotate_old_logs()
+    with sqlite3.connect(db_path) as conn:
+        count = conn.execute("SELECT COUNT(*) FROM requests").fetchone()[0]
+    assert count == 1
+
+
+def test_log_rotation_failure_is_silent():
+    with patch("rfd_model_router.api.DB_PATH", Path("/nonexistent/path/requests.db")):
+        try:
+            rfd_model_router.api.rotate_old_logs()
+        except Exception:
+            pytest.fail("rotate_old_logs should not raise")
+
+
 def test_usage_aggregates_correctly():
     db_path = Path(tempfile.gettempdir()) / "rfd_model_router_test_usage.db"
     if db_path.exists():

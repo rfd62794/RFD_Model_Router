@@ -6,14 +6,15 @@ from .base import BaseAdapter
 
 
 class GroqAdapter(BaseAdapter):
-    def __init__(self):
-        self.client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+    def __init__(self, timeout: int = 30):
+        self.client = Groq(api_key=os.environ.get("GROQ_API_KEY"), timeout=timeout)
 
     def complete(
         self,
         model: str,
         messages: list[dict],
         system_prompt: str | None = None,
+        timeout: int = 30,
     ) -> tuple[str, int, int]:
         msgs = list(messages)
         if system_prompt is not None:

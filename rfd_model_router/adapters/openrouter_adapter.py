@@ -6,10 +6,11 @@ from .base import BaseAdapter
 
 
 class OpenRouterAdapter(BaseAdapter):
-    def __init__(self):
+    def __init__(self, timeout: int = 30):
         self.client = OpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=os.environ.get("OPENROUTER_API_KEY"),
+            timeout=timeout,
         )
 
     def complete(
@@ -17,6 +18,7 @@ class OpenRouterAdapter(BaseAdapter):
         model: str,
         messages: list[dict],
         system_prompt: str | None = None,
+        timeout: int = 30,
     ) -> tuple[str, int, int]:
         msgs = list(messages)
         if system_prompt is not None:

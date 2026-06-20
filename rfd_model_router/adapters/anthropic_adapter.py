@@ -6,14 +6,18 @@ from .base import BaseAdapter
 
 
 class AnthropicAdapter(BaseAdapter):
-    def __init__(self):
-        self.client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+    def __init__(self, timeout: int = 30):
+        self.client = Anthropic(
+            api_key=os.environ.get("ANTHROPIC_API_KEY"),
+            timeout=timeout,
+        )
 
     def complete(
         self,
         model: str,
         messages: list[dict],
         system_prompt: str | None = None,
+        timeout: int = 30,
     ) -> tuple[str, int, int]:
         kwargs = {"model": model, "messages": messages, "max_tokens": 1024}
         if system_prompt is not None:

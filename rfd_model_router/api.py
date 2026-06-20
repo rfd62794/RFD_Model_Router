@@ -1,3 +1,4 @@
+import logging
 import os
 import sqlite3
 import time
@@ -5,38 +6,55 @@ from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
 from starlette.responses import JSONResponse
 
 from .logger import DB_PATH, init_db, log_request
+from .models import RouteRequest, RouteResponse
 from .router import load_config, route
 
 load_dotenv()
 
-
-class RouteRequest(BaseModel):
-    task_type: str
-    messages: list[dict]
-    system_prompt: str | None = None
-
-
-class RouteResponse(BaseModel):
-    completion: str
-    provider: str
-    model: str
-    tokens: dict
+REQUIRED_KEYS = {
+    "anthropic": "ANTHROPIC_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "gemini": "GEMINI_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+}
 
 
-app = FastAPI(title="RFD Model Router API")
+def rotate_old_logs() -> None:
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute(
+            "DELETE FROM requests WHERE timestamp < datetime('now', '-30 days')"
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    for provider, key in REQUIRED_KEYS.items():
+        if not os.getenv(key):
+            logging.warning(f"Missing API key for provider '{provider}': {key} not set")
+    rotate_old_logs()
+    init_db()
+    yield
+
+
+app = FastAPI(title="RFD Model Router API", lifespan=lifespan)
 
 
 @app.post("/route", response_model=RouteResponse)
 async def route_completion(request: RouteRequest):
     start = time.perf_counter()
     try:
+        messages = [msg.model_dump() for msg in request.messages]
         text, provider, model, input_tokens, output_tokens = route(
             task_type=request.task_type,
-            messages=request.messages,
+            messages=messages,
             system_prompt=request.system_prompt,
         )
         duration_ms = int((time.perf_counter() - start) * 1000)
@@ -117,7 +135,7 @@ def usage():
             group["requests"] += requests
             group["input_tokens"] += input_tokens
             group["output_tokens"] += output_tokens
-    except Exception as exc:
+    except Exception:
         log_request("usage", "unknown", "unknown", 0, 0, 0, False)
     return totals
 
@@ -125,15 +143,6 @@ def usage():
 @app.exception_handler(Exception)
 async def generic_exception_handler(request, exc):
     return JSONResponse({"detail": str(exc)}, status_code=500)
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    init_db()
-    yield
-
-
-app.router.lifespan_context = lifespan
 
 
 def main() -> None:

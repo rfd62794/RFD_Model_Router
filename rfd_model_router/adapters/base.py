@@ -8,5 +8,6 @@ class BaseAdapter(ABC):
         model: str,
         messages: list[dict],
         system_prompt: str | None = None,
+        timeout: int = 30,
     ) -> tuple[str, int, int]:
         ...

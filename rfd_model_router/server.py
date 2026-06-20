@@ -42,7 +42,7 @@ async def route_completion(
 
 
 @mcp.tool()
-async def route_completion_stream(
+def route_completion_stream(
     task_type: str,
     messages: list[dict],
     system_prompt: str | None = None,

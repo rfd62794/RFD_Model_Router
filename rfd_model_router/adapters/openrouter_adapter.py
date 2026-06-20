@@ -44,7 +44,7 @@ class OpenRouterAdapter(BaseAdapter):
         msgs = self._build_messages(messages, system_prompt)
         input_tokens = output_tokens = 0
         response = self.client.chat.completions.create(
-            model=model, messages=msgs, stream=True, stream_options={"include_usage": True}
+            model=model, messages=msgs, stream=True
         )
         for chunk in response:
             if chunk.choices and chunk.choices[0].delta.content:

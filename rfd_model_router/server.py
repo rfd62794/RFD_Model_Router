@@ -6,7 +6,7 @@ from mcp.server.fastmcp import FastMCP
 from uvicorn import run
 
 from .logger import init_db, log_request
-from .router import route
+from .router import route, route_stream
 
 load_dotenv()
 
@@ -39,6 +39,28 @@ async def route_completion(
         except Exception:
             pass
         raise
+
+
+@mcp.tool()
+async def route_completion_stream(
+    task_type: str,
+    messages: list[dict],
+    system_prompt: str | None = None,
+) -> str:
+    """
+    Streams a completion via the configured provider for the given task type.
+    Returns the full concatenated text when complete.
+    Note: FastMCP token-by-token streaming depends on client support.
+    Falls back to full response if streaming is not supported by the MCP client.
+    """
+    gen = route_stream(task_type, messages, system_prompt)
+    chunks = []
+    try:
+        while True:
+            chunks.append(next(gen))
+    except StopIteration:
+        pass
+    return "".join(chunks)
 
 
 def main() -> None:

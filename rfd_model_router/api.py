@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import sqlite3
@@ -6,11 +7,12 @@ from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from starlette.responses import JSONResponse
 
 from .logger import DB_PATH, init_db, log_request
 from .models import RouteRequest, RouteResponse
-from .router import load_config, route
+from .router import load_config, route, route_stream
 
 load_dotenv()
 
@@ -77,6 +79,27 @@ async def route_completion(request: RouteRequest):
         except Exception:
             pass
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/route/stream")
+def route_stream_endpoint(request: RouteRequest):
+    def generate():
+        gen = route_stream(
+            request.task_type,
+            [m.model_dump() for m in request.messages],
+            request.system_prompt,
+        )
+        try:
+            while True:
+                chunk = next(gen)
+                yield f"data: {json.dumps({'token': chunk, 'done': False})}\n\n"
+        except StopIteration as e:
+            meta = e.value or {}
+            yield f"data: {json.dumps({**meta, 'done': True})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @app.get("/health")

@@ -1,6 +1,7 @@
 import sqlite3
 import time
 import warnings
+from collections.abc import Generator
 from pathlib import Path
 
 import yaml
@@ -80,6 +81,65 @@ def _get_daily_spend(provider: str) -> float:
         return 0.0
 
 
+def _check_estimation(messages: list[dict], system_prompt: str | None, entry: dict) -> None:
+    """Pre-call token estimation check. Raises ValueError if exceeds 90% of context limit."""
+    estimated = estimate_tokens(messages, system_prompt)
+    max_ctx = entry.get("max_context_tokens")
+    if max_ctx and estimated > int(max_ctx * 0.9):
+        raise ValueError(
+            f"Estimated {estimated} tokens exceeds 90% of {entry['model']} "
+            f"context limit ({max_ctx}). Reduce input size."
+        )
+
+
+def _check_throttle(
+    provider: str,
+    model: str,
+    fallback_provider: str | None,
+    fallback_model: str | None,
+    rate_limits: dict,
+) -> tuple[str, str]:
+    """Throttle check with fallback. Returns (provider, model) after check. Raises ThrottleError if throttled and no fallback."""
+    rpm = rate_limits.get(provider, {}).get("requests_per_minute", 0)
+    if not _throttle.is_allowed(provider, rpm):
+        if fallback_provider and fallback_model:
+            fallback_rpm = rate_limits.get(fallback_provider, {}).get("requests_per_minute", 0)
+            if _throttle.is_allowed(fallback_provider, fallback_rpm):
+                return fallback_provider, fallback_model
+        raise ThrottleError(f"Provider '{provider}' rate limit exceeded ({rpm} RPM)")
+    return provider, model
+
+
+def _check_budget(
+    provider: str,
+    model: str,
+    fallback_provider: str | None,
+    fallback_model: str | None,
+    budgets: dict,
+) -> tuple[str, str]:
+    """Budget check with fallback. Returns (provider, model) after check. Raises BudgetExceededError if exceeded and no fallback."""
+    daily_limit = budgets.get(provider, {}).get("daily_limit_usd", 0.0)
+    if daily_limit > 0.0:
+        today_spend = _get_daily_spend(provider)
+        if today_spend >= daily_limit:
+            if fallback_provider and fallback_model:
+                fallback_limit = budgets.get(fallback_provider, {}).get("daily_limit_usd", 0.0)
+                fallback_spend = _get_daily_spend(fallback_provider)
+                if fallback_limit == 0.0 or fallback_spend < fallback_limit:
+                    return fallback_provider, fallback_model
+                else:
+                    raise BudgetExceededError(
+                        f"Provider '{provider}' daily budget ${daily_limit:.2f} exceeded "
+                        f"(spent ${today_spend:.4f} today)"
+                    )
+            else:
+                raise BudgetExceededError(
+                    f"Provider '{provider}' daily budget ${daily_limit:.2f} exceeded "
+                    f"(spent ${today_spend:.4f} today)"
+                )
+    return provider, model
+
+
 def _complete_with_retry(adapter, model, messages, system_prompt):
     last_error = None
     for attempt in range(MAX_RETRIES + 1):
@@ -117,50 +177,17 @@ def route(
     budgets = config.get("budgets", {})
 
     # 1. Pre-call token estimation
-    estimated = estimate_tokens(messages, system_prompt)
-    max_ctx = entry.get("max_context_tokens")
-    if max_ctx and estimated > int(max_ctx * 0.9):
-        raise ValueError(
-            f"Estimated {estimated} tokens exceeds 90% of {entry['model']} "
-            f"context limit ({max_ctx}). Reduce input size."
-        )
+    _check_estimation(messages, system_prompt, entry)
 
     # 2. Throttle check
-    rpm = rate_limits.get(provider, {}).get("requests_per_minute", 0)
-    if not _throttle.is_allowed(provider, rpm):
-        # Try fallback before raising
-        if fallback_provider and fallback_model:
-            fallback_rpm = rate_limits.get(fallback_provider, {}).get("requests_per_minute", 0)
-            if _throttle.is_allowed(fallback_provider, fallback_rpm):
-                # Route via fallback
-                provider = fallback_provider
-                model = fallback_model
-        else:
-            raise ThrottleError(f"Provider '{provider}' rate limit exceeded ({rpm} RPM)")
+    provider, model = _check_throttle(
+        provider, model, fallback_provider, fallback_model, rate_limits
+    )
 
     # 3. Budget check
-    daily_limit = budgets.get(provider, {}).get("daily_limit_usd", 0.0)
-    if daily_limit > 0.0:
-        today_spend = _get_daily_spend(provider)
-        if today_spend >= daily_limit:
-            # Try fallback before raising
-            if fallback_provider and fallback_model:
-                fallback_limit = budgets.get(fallback_provider, {}).get("daily_limit_usd", 0.0)
-                fallback_spend = _get_daily_spend(fallback_provider)
-                if fallback_limit == 0.0 or fallback_spend < fallback_limit:
-                    # Route via fallback
-                    provider = fallback_provider
-                    model = fallback_model
-                else:
-                    raise BudgetExceededError(
-                        f"Provider '{provider}' daily budget ${daily_limit:.2f} exceeded "
-                        f"(spent ${today_spend:.4f} today)"
-                    )
-            else:
-                raise BudgetExceededError(
-                    f"Provider '{provider}' daily budget ${daily_limit:.2f} exceeded "
-                    f"(spent ${today_spend:.4f} today)"
-                )
+    provider, model = _check_budget(
+        provider, model, fallback_provider, fallback_model, budgets
+    )
 
     adapter = get_adapter(provider)
     try:
@@ -199,3 +226,67 @@ def route(
             )
             return text, fallback_provider, fallback_model, input_tokens, output_tokens
         raise primary_error
+
+
+def route_stream(
+    task_type: str,
+    messages: list[dict],
+    system_prompt: str | None = None,
+) -> Generator[str, None, dict]:
+    """
+    Yields text chunks. Returns metadata dict on exhaustion:
+    {"provider": str, "model": str, "input_tokens": int,
+     "output_tokens": int, "cost_usd": float}
+
+    No retry. Throttle and budget checks apply before stream starts.
+    Pre-call token estimation applies.
+    """
+    config = load_config()
+    entry = config.get(task_type) or config["default"]
+    provider = entry["provider"]
+    model = entry["model"]
+    fallback_provider = entry.get("fallback_provider")
+    fallback_model = entry.get("fallback_model")
+    rate_limits = config.get("rate_limits", {})
+    budgets = config.get("budgets", {})
+
+    # Reuse existing checks — estimate, throttle, budget
+    _check_estimation(messages, system_prompt, entry)
+    provider, model = _check_throttle(
+        provider, model, fallback_provider, fallback_model, rate_limits
+    )
+    provider, model = _check_budget(
+        provider, model, fallback_provider, fallback_model, budgets
+    )
+
+    adapter = get_adapter(provider)
+    gen = adapter.stream(model, messages, system_prompt)
+
+    input_tokens = output_tokens = 0
+    try:
+        while True:
+            chunk = next(gen)
+            yield chunk
+    except StopIteration as e:
+        if e.value:
+            input_tokens, output_tokens = e.value
+
+    cost = calculate_cost(input_tokens, output_tokens, entry.get("pricing"))
+    log_request(
+        task_type,
+        provider,
+        model,
+        input_tokens,
+        output_tokens,
+        0,
+        True,
+        cost_usd=cost,
+    )
+
+    return {
+        "provider": provider,
+        "model": model,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cost_usd": cost,
+    }

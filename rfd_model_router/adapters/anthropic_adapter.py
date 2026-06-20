@@ -1,6 +1,7 @@
 import os
 
 from anthropic import Anthropic
+from collections.abc import Generator
 
 from .base import BaseAdapter
 
@@ -27,3 +28,24 @@ class AnthropicAdapter(BaseAdapter):
         input_tokens = response.usage.input_tokens
         output_tokens = response.usage.output_tokens
         return text, input_tokens, output_tokens
+
+    def stream(
+        self,
+        model: str,
+        messages: list[dict],
+        system_prompt: str | None = None,
+        timeout: int = 30,
+    ) -> Generator[str, None, tuple[int, int]]:
+        input_tokens = output_tokens = 0
+        with self.client.messages.stream(
+            model=model,
+            max_tokens=4096,
+            system=system_prompt or "",
+            messages=messages,
+        ) as s:
+            for text in s.text_stream:
+                yield text
+            usage = s.get_final_message().usage
+            input_tokens = usage.input_tokens
+            output_tokens = usage.output_tokens
+        return (input_tokens, output_tokens)

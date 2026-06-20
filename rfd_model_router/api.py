@@ -189,7 +189,7 @@ def usage():
             group["daily_limit_usd"] = budgets.get(provider, {}).get("daily_limit_usd", 0.0)
             group["daily_spend_usd"] = daily_spend_map.get(provider, 0.0)
     except Exception:
-        log_request("usage", "unknown", "unknown", 0, 0, 0, False)
+        pass
     return totals
 
 

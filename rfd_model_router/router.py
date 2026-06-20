@@ -55,6 +55,8 @@ class BudgetExceededError(Exception):
 
 def _is_retriable(e):
     status = getattr(e, "status_code", None) or getattr(e, "status", None)
+    if status == 402:  # Insufficient credits — never retry
+        return False
     if status in RETRY_STATUS_CODES:
         return True
     if isinstance(e, TimeoutError):

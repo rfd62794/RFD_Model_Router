@@ -3,6 +3,8 @@ import logging
 import os
 import sqlite3
 import time
+import uuid
+import time as _time
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
@@ -11,7 +13,14 @@ from fastapi.responses import StreamingResponse
 from starlette.responses import JSONResponse
 
 from .logger import DB_PATH, init_db, log_request
-from .models import RouteRequest, RouteResponse
+from .models import (
+    RouteRequest,
+    RouteResponse,
+    OpenAIRequest,
+    OpenAIResponse,
+    OpenAIChoice,
+    OpenAIUsage,
+)
 from .router import load_config, route, route_stream
 
 load_dotenv()
@@ -22,6 +31,16 @@ REQUIRED_KEYS = {
     "gemini": "GEMINI_API_KEY",
     "openrouter": "OPENROUTER_API_KEY",
 }
+
+KNOWN_TASK_TYPES = {
+    "code_transformation",
+    "code_construction",
+    "content",
+    "directive",
+    "default",
+    "cline",
+}
+
 
 
 def rotate_old_logs() -> None:
@@ -109,6 +128,39 @@ def health():
         "providers": ["anthropic", "groq", "gemini", "openrouter"],
         "config_loaded": bool(load_config()),
     }
+
+
+@app.post("/v1/chat/completions")
+async def openai_compatible(request: OpenAIRequest):
+    """
+    OpenAI-compatible endpoint for Cline and other OpenAI SDK clients.
+    Maps request.model to task_type. Unknown models fall back to 'cline'.
+    Streaming not supported on this endpoint — always returns full response.
+    """
+    task_type = request.model if request.model in KNOWN_TASK_TYPES else "cline"
+    messages = [{"role": m.role, "content": m.content} for m in request.messages]
+
+    try:
+        text, provider, model_used, input_tokens, output_tokens = route(
+            task_type, messages
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    return OpenAIResponse(
+        id=f"chatcmpl-{uuid.uuid4().hex[:8]}",
+        created=int(_time.time()),
+        model=model_used,
+        choices=[OpenAIChoice(
+            message={"role": "assistant", "content": text},
+            finish_reason="stop",
+        )],
+        usage=OpenAIUsage(
+            prompt_tokens=input_tokens,
+            completion_tokens=output_tokens,
+            total_tokens=input_tokens + output_tokens,
+        ),
+    )
 
 
 @app.get("/usage")

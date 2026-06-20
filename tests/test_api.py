@@ -1,3 +1,6 @@
+import sqlite3
+import tempfile
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
@@ -9,7 +12,7 @@ client = TestClient(app)
 
 def test_route_endpoint_returns_completion():
     with patch("rfd_model_router.api.route") as mock_route:
-        mock_route.return_value = ("hello", "groq", "llama-3.1-70b-versatile", 10, 5)
+        mock_route.return_value = ("hello", "groq", "llama-3.3-70b-versatile", 10, 5)
         response = client.post(
             "/route",
             json={"task_type": "code_transformation", "messages": [{"role": "user", "content": "hi"}]},
@@ -18,7 +21,7 @@ def test_route_endpoint_returns_completion():
         data = response.json()
         assert data["completion"] == "hello"
         assert data["provider"] == "groq"
-        assert data["model"] == "llama-3.1-70b-versatile"
+        assert data["model"] == "llama-3.3-70b-versatile"
         assert data["tokens"] == {"input": 10, "output": 5}
 
 
@@ -68,3 +71,89 @@ def test_route_endpoint_log_failure_does_not_fail():
 def test_route_endpoint_invalid_request_returns_422():
     response = client.post("/route", json={"messages": [{"role": "user", "content": "hi"}]})
     assert response.status_code == 422
+
+
+def test_health_returns_200():
+    response = client.get("/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+
+
+def test_health_has_providers():
+    response = client.get("/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert "providers" in data
+    for provider in ["anthropic", "groq", "gemini", "openrouter"]:
+        assert provider in data["providers"]
+
+
+def test_usage_returns_200():
+    response = client.get("/usage")
+    assert response.status_code == 200
+
+
+def test_usage_empty_db():
+    with tempfile.TemporaryDirectory() as tmp:
+        with patch("rfd_model_router.api.DB_PATH", Path(tmp) / "missing.db"):
+            response = client.get("/usage")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["total_requests"] == 0
+            assert data["total_input_tokens"] == 0
+            assert data["total_output_tokens"] == 0
+            assert data["by_task_type"] == {}
+            assert data["by_provider"] == {}
+
+
+def test_usage_aggregates_correctly():
+    db_path = Path(tempfile.gettempdir()) / "rfd_model_router_test_usage.db"
+    if db_path.exists():
+        db_path.unlink()
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            CREATE TABLE requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                task_type TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                model TEXT NOT NULL,
+                input_tokens INTEGER,
+                output_tokens INTEGER,
+                duration_ms INTEGER,
+                success INTEGER NOT NULL
+            )
+            """
+        )
+        conn.executemany(
+            """
+            INSERT INTO requests
+            (timestamp, task_type, provider, model, input_tokens, output_tokens, duration_ms, success)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("2026-01-01T00:00:00Z", "code", "groq", "llama", 10, 5, 100, 1),
+                ("2026-01-01T00:00:00Z", "code", "groq", "llama", 20, 10, 200, 1),
+                ("2026-01-01T00:00:00Z", "content", "gemini", "flash", 5, 2, 50, 1),
+            ],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    with patch("rfd_model_router.api.DB_PATH", db_path):
+        response = client.get("/usage")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total_requests"] == 3
+        assert data["total_input_tokens"] == 35
+        assert data["total_output_tokens"] == 17
+        assert data["by_task_type"]["code"]["requests"] == 2
+        assert data["by_provider"]["groq"]["requests"] == 2
+        assert data["by_provider"]["gemini"]["requests"] == 1
+    try:
+        db_path.unlink()
+    except PermissionError:
+        pass

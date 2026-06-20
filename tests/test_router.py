@@ -77,3 +77,43 @@ def test_log_failure_does_not_fail_route():
             server.route_completion("directive", [{"role": "user", "content": "hi"}])
         )
         assert result == "ok"
+
+
+def test_retry_on_429():
+    adapter = _mock_adapter()
+    err = Exception("rate limited")
+    err.status_code = 429
+    adapter.complete.side_effect = [err, err, ("ok", 1, 2)]
+    with patch("rfd_model_router.router.get_adapter", return_value=adapter), patch(
+        "rfd_model_router.router.time.sleep"
+    ):
+        result = router.route("code_transformation", [{"role": "user", "content": "hi"}])
+        assert result[0] == "ok"
+        assert adapter.complete.call_count == 3
+
+
+def test_no_retry_on_400():
+    adapter = _mock_adapter()
+    err = Exception("bad request")
+    err.status_code = 400
+    adapter.complete.side_effect = err
+    with patch("rfd_model_router.router.get_adapter", return_value=adapter), patch(
+        "rfd_model_router.router.time.sleep"
+    ) as mock_sleep:
+        with pytest.raises(Exception):
+            router.route("code_transformation", [{"role": "user", "content": "hi"}])
+        assert adapter.complete.call_count == 1
+        mock_sleep.assert_not_called()
+
+
+def test_max_retries_exceeded_raises():
+    adapter = _mock_adapter()
+    err = Exception("rate limited")
+    err.status_code = 429
+    adapter.complete.side_effect = [err, err, err]
+    with patch("rfd_model_router.router.get_adapter", return_value=adapter), patch(
+        "rfd_model_router.router.time.sleep"
+    ):
+        with pytest.raises(Exception):
+            router.route("code_transformation", [{"role": "user", "content": "hi"}])
+        assert adapter.complete.call_count == 3

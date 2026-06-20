@@ -79,15 +79,33 @@ def test_groq_system_prompt_prepended():
 
 def test_gemini_adapter_returns_tuple():
     with patch("rfd_model_router.adapters.gemini_adapter.genai") as MockGenai:
-        model = MagicMock()
+        client = MagicMock()
         response = MagicMock()
         response.text = "hello"
-        model.generate_content.return_value = response
-        MockGenai.GenerativeModel.return_value = model
+        response.usage_metadata.prompt_token_count = 10
+        response.usage_metadata.candidates_token_count = 5
+        client.models.generate_content.return_value = response
+        MockGenai.Client.return_value = client
 
         adapter = GeminiAdapter()
         result = adapter.complete("gemini", [{"role": "user", "content": "hi"}], "sys")
-        assert result == ("hello", 0, 0)
+        assert result == ("hello", 10, 5)
+
+
+def test_gemini_adapter_uses_new_sdk():
+    with patch("rfd_model_router.adapters.gemini_adapter.genai") as MockGenai:
+        client = MagicMock()
+        response = MagicMock()
+        response.text = "ok"
+        response.usage_metadata.prompt_token_count = 4
+        response.usage_metadata.candidates_token_count = 2
+        client.models.generate_content.return_value = response
+        MockGenai.Client.return_value = client
+
+        adapter = GeminiAdapter()
+        adapter.complete("gemini-2.0-flash-exp", [{"role": "user", "content": "hi"}])
+        MockGenai.Client.assert_called_once()
+        client.models.generate_content.assert_called_once()
 
 
 def test_openrouter_adapter_returns_tuple():

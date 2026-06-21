@@ -57,19 +57,19 @@ def test_run_job_terminates_pod_on_success(mock_get_client):
 
 @patch("rfd_model_router.adapters.runpod_adapter.RunpodAdapter._get_client")
 def test_run_job_terminates_pod_on_failure(mock_get_client):
-    """Mock SDK upload raises; verify terminate still called."""
+    """Mock SDK script fails; verify terminate still called."""
     mock_client = Mock()
     mock_get_client.return_value = mock_client
     
     mock_client.create_pod.return_value = {"id": "pod-123"}
     mock_client.get_pod.return_value = {"desiredState": "RUNNING"}
-    mock_client.upload_file_to_pod.side_effect = Exception("Upload failed")
+    mock_client.execute_pod_command.return_value = {"exitCode": 1}
     
     spec = JobSpec(
         job_type="test",
         gpu_type="NVIDIA RTX A5000",
         gpu_count=1,
-        upload_paths=["/tmp/test.txt"],
+        upload_paths=[],
         script="print('test')",
         download_paths=[],
         local_output_dir="/tmp",
@@ -82,7 +82,7 @@ def test_run_job_terminates_pod_on_failure(mock_get_client):
     
     mock_client.stop_pod.assert_called_once_with("pod-123")
     assert result.success is False
-    assert "Upload failed" in result.error
+    assert "Script execution failed" in result.error
 
 
 @patch("rfd_model_router.adapters.runpod_adapter.RunpodAdapter._get_client")

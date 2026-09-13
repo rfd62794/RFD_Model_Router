@@ -66,7 +66,7 @@ def route_completion_stream(
 def main() -> None:
     init_db()
     app = mcp.sse_app()
-    run(app, host="0.0.0.0", port=8004)
+    run(app, host=os.environ.get("RFD_MODEL_ROUTER_HOST", "127.0.0.1"), port=8004)
 
 
 if __name__ == "__main__":

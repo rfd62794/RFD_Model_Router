@@ -253,7 +253,7 @@ async def generic_exception_handler(request, exc):
 def main() -> None:
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8005)
+    uvicorn.run(app, host=os.environ.get("RFD_MODEL_ROUTER_HOST", "127.0.0.1"), port=8005)
 
 
 if __name__ == "__main__":

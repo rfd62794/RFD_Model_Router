@@ -1,6 +1,9 @@
+import logging
 import sqlite3
 import time
 from pathlib import Path
+
+_log = logging.getLogger(__name__)
 
 DB_PATH = Path(__file__).parent.parent / "requests.db"
 
@@ -31,7 +34,7 @@ def init_db() -> None:
                 pass  # Column already exists
             conn.commit()
     except Exception:
-        pass
+        _log.warning("init_db failed for %s", DB_PATH, exc_info=True)
 
 
 def log_request(
@@ -66,4 +69,4 @@ def log_request(
             )
             conn.commit()
     except Exception:
-        pass
+        _log.warning("log_request failed for %s", DB_PATH, exc_info=True)

@@ -46,3 +46,21 @@ def test_logger_failure_is_silent(tmp_path):
     with patch.object(logger, "DB_PATH", tmp_path / "test.db"):
         (tmp_path / "test.db").mkdir()
         logger.log_request("code", "groq", "llama", 10, 5, 100, True)
+
+
+def test_log_request_failure_logs_warning(tmp_path, caplog):
+    with patch.object(logger, "DB_PATH", tmp_path / "test.db"):
+        (tmp_path / "test.db").mkdir()
+        with caplog.at_level("WARNING", logger="rfd_model_router.logger"):
+            logger.log_request("code", "groq", "llama", 10, 5, 100, True)
+    assert any("log_request failed" in r.message for r in caplog.records)
+
+
+def test_api_main_binds_localhost_by_default():
+    import os
+    from rfd_model_router import api
+    with patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("RFD_MODEL_ROUTER_HOST", None)
+        with patch("uvicorn.run") as mock_run:
+            api.main()
+    assert mock_run.call_args.kwargs["host"] == "127.0.0.1"

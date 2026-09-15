@@ -35,7 +35,8 @@ class RunpodAdapter(ComputeAdapter):
         """Return configured runpod module. Lazy import."""
         if self._client is None:
             import runpod
-            self._client = runpod.APIKeyAuth(api_key=self.api_key)
+            runpod.api_key = self.api_key
+            self._client = runpod
         return self._client
 
     def _wait_for_pod(self, pod_id: str, timeout_seconds: int = 120) -> bool:
@@ -183,7 +184,7 @@ class RunpodAdapter(ComputeAdapter):
                 image_name=POD_IMAGE,
                 gpu_type_id=spec.gpu_type,
                 gpu_count=spec.gpu_count,
-                volume_size=20,  # GB
+                container_disk_in_gb=20,  # GB
             )
             pod_id = pod.get("id")
             

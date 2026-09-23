@@ -47,3 +47,17 @@ Write `docs/AUDIT.md` with:
 - Work only on your `directive/<slug>` branch. **Never commit to main, never push, never deploy.**
 - Update this directive's Status row when you finish or stop partway.
 - If a tool call is genuinely blocked, stop and write why in the Status row.
+
+<!-- queue:start -->
+## Queue
+
+| Field | Value |
+|---|---|
+| Status | Queued |
+| Assigned to | devin |
+| Branch | - |
+| Base branch | - |
+
+**Status log**
+- 2026-09-23 07:34 · robert-claude · none → Queued — Robert 2026-09-23: yes, audit the Model Router
+<!-- queue:end -->

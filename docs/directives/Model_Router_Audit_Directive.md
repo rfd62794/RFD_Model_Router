@@ -53,12 +53,14 @@ Write `docs/AUDIT.md` with:
 
 | Field | Value |
 |---|---|
-| Status | Approved |
+| Status | In progress |
 | Assigned to | devin |
-| Branch | - |
+| Branch | directive/rfd-model-router-model-router-audit-directive |
 | Base branch | - |
+| Base commit | 44c32842e613e708e790ccedb5486537c0427ae7 |
 
 **Status log**
 - 2026-09-23 07:34 · robert-claude · none → Queued — Robert 2026-09-23: yes, audit the Model Router
 - 2026-09-23 07:34 · robert-claude · Queued → Approved
+- 2026-09-23 07:34 · dispatcher · Approved → In progress — dispatched devin in C:\GitHub\.worktrees\RFD_Model_Router--rfd-model-router-model-router-audit-directive; base origin/master (local master differs)
 <!-- queue:end -->

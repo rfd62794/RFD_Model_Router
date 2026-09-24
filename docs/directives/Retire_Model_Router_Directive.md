@@ -81,7 +81,7 @@ package, `archive-ready` or `keep`.
 
 | Field | Value |
 |---|---|
-| Status | In progress |
+| Status | Review |
 | Assigned to | devin |
 | Branch | directive/rfd-model-router-retire-model-router-directive |
 | Base branch | - |
@@ -92,4 +92,5 @@ package, `archive-ready` or `keep`.
 - 2026-09-23 21:18 · devin-overseer · Draft → Queued
 - 2026-09-23 21:19 · devin-overseer (delegated) · Queued → Approved
 - 2026-09-23 21:59 · dispatcher · Approved → In progress — dispatched devin on personal-laptop in C:\GitHub\.worktrees\RFD_Model_Router--rfd-model-router-retire-model-router-directive; lane=strong
+- 2026-09-23 22:03 · devin · In progress → Review
 <!-- queue:end -->

@@ -80,7 +80,7 @@ package, `archive-ready` or `keep`.
 
 | Field | Value |
 |---|---|
-| Status | Queued |
+| Status | Approved |
 | Assigned to | devin |
 | Branch | directive/rfd-model-router-retire-model-router-directive |
 | Base branch | - |
@@ -89,4 +89,5 @@ package, `archive-ready` or `keep`.
 **Status log**
 - 2026-09-23 21:13 · devin-overseer · none → Draft — agentstack retirement sweep (Robert, 2026-09-23)
 - 2026-09-23 21:18 · devin-overseer · Draft → Queued
+- 2026-09-23 21:19 · devin-overseer (delegated) · Queued → Approved
 <!-- queue:end -->

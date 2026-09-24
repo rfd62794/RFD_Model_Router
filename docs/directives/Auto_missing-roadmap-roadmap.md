@@ -145,7 +145,7 @@ the finding that was inaccurate. And any refused command, verbatim.
 
 | Field | Value |
 |---|---|
-| Status | In progress |
+| Status | Review |
 | Assigned to | devin |
 | Branch | directive/rfd-model-router-auto-missing-roadmap-roadmap |
 | Base branch | - |
@@ -156,4 +156,5 @@ the finding that was inaccurate. And any refused command, verbatim.
 - 2026-09-22 13:07 · backlog-policy · none → Queued — generated from a missing-roadmap finding authorised in backlog_policy.yaml
 - 2026-09-24 09:49 · devin-overseer (delegated) · Queued → Approved
 - 2026-09-24 10:12 · dispatcher · Approved → In progress — dispatched devin on personal-laptop in C:\GitHub\.worktrees\RFD_Model_Router--rfd-model-router-auto-missing-roadmap-roadmap; lane=strong; model=default
+- 2026-09-24 10:16 · devin · In progress → Review — [origin] spent: devin 3 min est. n/a
 <!-- queue:end -->

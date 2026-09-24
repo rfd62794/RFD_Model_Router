@@ -145,7 +145,7 @@ the finding that was inaccurate. And any refused command, verbatim.
 
 | Field | Value |
 |---|---|
-| Status | Queued |
+| Status | Approved |
 | Assigned to | devin |
 | Branch | - |
 | Base branch | - |
@@ -153,4 +153,5 @@ the finding that was inaccurate. And any refused command, verbatim.
 
 **Status log**
 - 2026-09-22 13:07 · backlog-policy · none → Queued — generated from a missing-roadmap finding authorised in backlog_policy.yaml
+- 2026-09-24 09:49 · devin-overseer (delegated) · Queued → Approved
 <!-- queue:end -->

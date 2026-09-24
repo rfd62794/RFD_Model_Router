@@ -54,7 +54,8 @@ This repo is cloned — the worktree **is** RFD_Model_Router; audit in place.
 
 ## Sandbox needs
 
-- `Exec(uv run pytest -q)` — only if a suite exists
+- `Exec(uv run pytest -q)`
+  (run only if the repo has a suite — declared so the option exists)
 
 ## 6. Rules for this run
 

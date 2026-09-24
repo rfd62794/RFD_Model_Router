@@ -81,14 +81,15 @@ package, `archive-ready` or `keep`.
 
 | Field | Value |
 |---|---|
-| Status | Approved |
+| Status | In progress |
 | Assigned to | devin |
 | Branch | directive/rfd-model-router-retire-model-router-directive |
 | Base branch | - |
-| Base commit | 9c65f1cb |
+| Base commit | 6550b4da0a71907e3563e354286d2bde42d00b91 |
 
 **Status log**
 - 2026-09-23 21:13 · devin-overseer · none → Draft — agentstack retirement sweep (Robert, 2026-09-23)
 - 2026-09-23 21:18 · devin-overseer · Draft → Queued
 - 2026-09-23 21:19 · devin-overseer (delegated) · Queued → Approved
+- 2026-09-23 21:59 · dispatcher · Approved → In progress — dispatched devin on personal-laptop in C:\GitHub\.worktrees\RFD_Model_Router--rfd-model-router-retire-model-router-directive; lane=strong
 <!-- queue:end -->
